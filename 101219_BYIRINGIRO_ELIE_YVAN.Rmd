@@ -1,0 +1,625 @@
+---
+title: "Midterm Exam"
+author: "BYIIRINGIRO Elie Yvan"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document: default
+---
+
+
+```{r}
+####4.1.Downloading data and load them to R studio
+#Set working directory dataset & Loading the datasets
+getwd()
+setwd("E:/Midterm project/world bank dataset")
+
+#Checking if the life_expectancy.csv file is in the folder
+list.files()
+knitr::opts_knit$set(root.dir = "E:/Midterm project/world bank dataset")
+library(tidyverse)
+
+population <- read_csv("country_population.csv")
+fertility <- read_csv("fertility_rate.csv")
+life_expectancy <- read_csv("life_expectancy.csv")
+
+####4.2 Exploratory data analysis
+
+names(life_expectancy)  #This shows all the column names in the dataset.
+
+head(life_expectancy, 5)     # Top 5 rows
+
+tail(life_expectancy, 10)    # Bottom 10 rows
+
+str(life_expectancy)         # Data types for each column
+
+dim(life_expectancy)         # Shape (rows, columns)
+
+```
+
+```{r}
+#Step 1:Dropping Duplicate Rows
+life_expectancy <- distinct(life_expectancy)
+view(life_expectancy)
+####This removes any exact duplicates.
+```
+
+```{r}
+#Step 2:Count Missing Values per Column
+view(colSums(is.na(life_expectancy)))
+####This gives a count of NA (missing) values per column.
+```
+
+```{r}
+#Step 3:Detect Outliers (Boxplot of numeric variables)
+# Select only numeric columns
+numeric_vars <- life_expectancy %>%
+  select(where(is.numeric))
+
+#Step 4:Draw boxplots to check outliers
+boxplot(numeric_vars, main = "Boxplots for Quantitative Variables", las = 2)
+####The plot show variables with extreme values ("outliers").
+```
+
+
+```{r}
+#Step 5:Handle Missing Values:Fill missing values with median for numeric columns
+life_expectancy <- life_expectancy %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), median(., na.rm = TRUE), .)))
+```
+
+
+```{r}
+####4.3 Value extraction and plot
+#1) Extract Top 10 Most Populous Countries in 2015
+
+names(population)
+
+# Filter and extract top 10 most populous countries in 2015
+# List of known non-country aggregates to exclude:
+aggregates <- c(
+  "World", "IDA & IBRD total", "Low & middle income", "Middle income",
+  "IBRD only", "Early-demographic dividend", "Lower middle income", 
+  "Upper middle income", "East Asia & Pacific", "Late-demographic dividend",
+  "Sub-Saharan Africa", "OECD members", "High income", "Low income",
+  "North America", "South Asia", "Europe & Central Asia",
+  "Latin America & Caribbean", "European Union", "Post-demographic dividend","East Asia & Pacific (excluding high income)","East Asia & Pacific (IDA & IBRD countries)","South Asia (IDA & IBRD)","IDA total","IDA only","Sub-Saharan Africa (IDA & IBRD countries)","Sub-Saharan Africa (excluding high income)","Least developed countries: UN classification","Pre-demographic dividend",		
+"Heavily indebted poor countries (HIPC)","Latin America & the Caribbean (IDA & IBRD countries)","Latin America & Caribbean (excluding high income)","IDA blend","Fragile and conflict affected situations","Europe & Central Asia (IDA & IBRD countries)","Middle East & North Africa","Europe & Central Asia (excluding high income)","Arab World","Middle East & North Africa (excluding high income)","Middle East & North Africa (IDA & IBRD countries)","Euro area","Central Europe and the Baltics","Other small states","Small states","Caribbean small states","Pacific island small states","Not classified")
+
+#a) Filter out the aggregates and get top 10 countries by 2015 population
+top10_2016 <- population %>%
+  filter(`Indicator Name` == "Population, total") %>%
+  filter(!`Country Name` %in% aggregates) %>%  # exclude aggregates
+  select(`Country Name`, `2016`) %>%
+  arrange(desc(`2016`)) %>%
+  slice_head(n = 10)
+
+print(top10_2016)
+```
+
+```{r}
+#b) Bar Plot of Top 10 Populous Countries (2016)
+library(ggplot2)
+
+ggplot(top10_2016, aes(x = reorder(`Country Name`, -`2016`), y = `2016`)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Top 10 Most Populous Countries in 2015",
+       x = "Country",
+       y = "Population") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+#2) Plot Population Trend (1960–2016) for Top 10 Countries
+
+# Convert data from wide to long format for top 10 countries:
+# Filter to life expectancy indicator
+life_expectancy_filtered <- life_expectancy %>%
+  filter(`Indicator Name` == "Life expectancy at birth, total (years)")
+
+# Reshape to long format
+life_expectancy_long <- life_expectancy_filtered %>%
+  select(`Country Name`, `Indicator Name`, `1960`:`2016`) %>%
+  pivot_longer(cols = `1960`:`2016`, names_to = "Year", values_to = "LifeExpectancy")
+
+# Converting Year to numeric
+life_expectancy_long$Year <- as.numeric(life_expectancy_long$Year)
+
+# Filtering life expectancy for top 10 countries
+top10_life_expectancy <- life_expectancy_long %>%
+  filter(`Country Name` %in% top10_2016$`Country Name`)
+
+
+# Line plot of population trend
+library(ggplot2)
+
+ggplot(top10_life_expectancy, aes(x = Year, y = LifeExpectancy, color = `Country Name`)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Life Expectancy Trends (1960–2016) for Top 10 Most Populous Countries",
+       x = "Year",
+       y = "Life Expectancy (Years)",
+       color = "Country") +
+  theme_minimal()
+
+```
+
+```{r}
+#3) Fertility Rate and Life Expectancy Trends (1960–2016)
+#We use the fertility_rate and life_expectancy.csv datasets to:
+#a)Extract Fertility Rate for Top 10 Countries
+#b)Convert fertility data to long format
+fertility_long <- fertility %>%
+  filter(`Indicator Name` == "Fertility rate, total (births per woman)",
+         `Country Name` %in% top10_2016$`Country Name`) %>%
+  pivot_longer(cols = starts_with("19")|starts_with("20"),
+               names_to = "Year",
+               values_to = "FertilityRate") %>%
+  mutate(Year = as.integer(Year))
+```
+
+```{r}
+#c) Plot Fertility Rate Trends (1960–2016)
+# Remove missing fertility values
+fertility_clean <- fertility_long %>%
+  filter(!is.na(FertilityRate))
+
+# Plot the cleaned data
+ggplot(fertility_clean, aes(x = Year, y = FertilityRate, color = `Country Name`)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Fertility Rate Trend (1960–2016)",
+       y = "Fertility Rate (births per woman)",
+       x = "Year",
+       color = "Country") +
+  theme_minimal()
+
+```
+
+```{r}
+#4)Extract Life Expectancy for Top 10 Countries:
+#Step 1:Filter rows with the right indicator:
+life_exp_filtered <- life_expectancy %>%
+  filter(`Indicator Name` == "Life expectancy at birth, total (years)",
+         `Country Name` %in% top10_2016$`Country Name`)
+
+#Step 2: Select only needed columns (Country Name and years)
+life_exp_subset <- life_exp_filtered %>%
+  select(`Country Name`, `1960`:`2016`)
+
+life_exp_long <- life_exp_subset %>%
+  pivot_longer(cols = -`Country Name`, names_to = "Year", values_to = "Life_expectancy") %>%
+  mutate(Year = as.integer(Year))
+ggplot(life_exp_long, aes(x = Year, y = Life_expectancy, color = `Country Name`)) +
+  geom_line() +
+  labs(title = "Life Expectancy Trend (1960–2016)",
+       x = "Year", y = "Life Expectancy (years)") +
+  theme_minimal()
+
+```
+
+
+```{r}
+####4.4 Correlation analysis
+#1)
+#Step1:
+#Setting working directory 
+setwd("E:/Midterm project/Life Expectancy (WHO)")
+
+#Check if the Life Expectancy Data.csv file is in the folder
+list.files()
+knitr::opts_knit$set(root.dir = "E:/Midterm project/Life Expectancy (WHO)")
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(ggcorrplot)
+
+life_data <- read.csv("life Expectancy Data.csv")
+
+colnames(life_data)
+
+
+```
+
+
+```{r}
+##Step 2: Select the relevant numeric columns
+#We need to select only the columns required for correlation:
+#List of variables for correlation
+
+cor_vars <-life_data %>%
+  select(`Life.expectancy`, `Adult.Mortality`, `infant.deaths`, `Alcohol`, 
+         `percentage.expenditure`, `Hepatitis.B`, `Measles`, `BMI`, 
+         `under.five.deaths`, `Polio`, `Total.expenditure`, `Diphtheria`, 
+         `HIV.AIDS`, `GDP`, `Population`, `thinness..1.19.years`, 
+         `thinness.5.9.years`, `Income.composition.of.resources`, `Schooling`)
+```
+
+```{r}
+#Step 3: Remove missing values
+cor_vars_clean <- na.omit(cor_vars)
+```
+
+```{r}
+#Step 4: Compute correlation matrix
+cor_matrix <- cor(cor_vars_clean)
+round(cor_matrix, 2)  # Round for readability
+
+```
+
+
+```{r}
+#Step 5: Plot heatmap
+
+# Melt the correlation matrix for heatmap
+cor_melt <- melt(cor_matrix)
+
+ggplot(cor_melt, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "red", high = "green", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 5, hjust = 1)) +
+  coord_fixed() +
+  labs(title = "Correlation Heatmap")
+
+```
+
+
+```{r}
+#Step 6: Interpretation btn life expectancy and schooling
+
+cor_matrix["Life.expectancy", "Schooling"]
+
+#Interpretation of Result:
+#The correlation between Life Expectancy and Schooling is approximately 0.728.
+
+#What This Means:This is a strong positive correlation, since it’s close to 1.
+#It suggests that as average years of schooling increase, life expectancy tends to increase as well.
+#In other words, education appears to be positively associated with better health outcomes and longer lives.
+#This aligns well with real-world evidence: educated populations generally have better access to health information, services, and improved living conditions.
+```
+
+
+```{r}
+#2) Correlate Life Expectancy with Fertility Rate
+
+#Create a new variable called fertility_rate in the life expectancy dataset by merging it with the fertility_rate dataset, matched by both Country and Year. Then analyze the relationship.
+
+#Step 1: Load the Fertility Rate Data
+
+fertility <- read_csv("E:/Midterm project/world bank dataset/fertility_rate.csv")
+
+head(fertility)
+colnames(fertility)
+```
+
+
+```{r}
+#Step 2: Reshape Fertility Data to Long Format
+#Then convert it from wide (1960–2016 as columns) to long format so we can merge it with the life expectancy dataset.
+library(dplyr)
+library(tidyr)
+
+fertility_long <- fertility %>%
+  filter(`Indicator Name` == "Fertility rate, total (births per woman)") %>%
+  pivot_longer(cols = `1960`:`2016`,  # use backticks because column names are years
+               names_to = "Year",
+               values_to = "FertilityRate") %>%
+  rename(Country = `Country Name`) %>%
+  mutate(Year = as.integer(Year))
+```
+
+```{r}
+#Step 3: Merge both datasets:fertility into life_data by Country and Year
+life_data <- life_data %>%
+  left_join(fertility_long, by = c("Country", "Year"))
+
+glimpse(life_data$FertilityRate)
+summary(life_data$FertilityRate)
+```
+
+```{r}
+#step 4:
+# Check for NAs in the FertilityRate column
+summary(life_data$FertilityRate)
+
+# Clean dataset by removing unnecessary columns
+life_fertility_clean <- life_data %>%
+  select(-`Country Code`, -`Indicator Name`, -`Indicator Code`)
+
+# Checking final column names
+colnames(life_fertility_clean)
+
+```
+
+```{r}
+#Step 5: Visualization — Scatter Plot
+#Remove rows with NA in either FertilityRate or Life.expectancy
+clean_plot_data <- life_fertility_clean %>%
+  filter(!is.na(FertilityRate), !is.na(Life.expectancy))
+
+ggplot(clean_plot_data, aes(x = FertilityRate, y = Life.expectancy)) +
+  geom_point(alpha = 0.5, color = "steelblue") +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(title = "Relationship Between Fertility Rate and Life Expectancy",
+       x = "Fertility Rate (births per woman)",
+       y = "Life Expectancy (years)") +
+  theme_minimal()
+
+
+```
+
+```{r}
+#step 6:Numerical Correlation:We look the correlation coefficient to see how strongly life expectancy and fertility rate are related:
+# Removing rows with missing values
+
+life_fertility_clean2 <- life_fertility_clean %>%
+  filter(!is.na(Life.expectancy), !is.na(FertilityRate))
+
+# Computing correlation
+correlation <- cor(life_fertility_clean2$Life.expectancy, life_fertility_clean2$FertilityRate)
+correlation
+
+#Interpretation of Correlation:The value is close to -1, which means there is a strong negative linear relationship between fertility rate and life expectancy.
+
+#This implies that:As fertility rate increases, life expectancy tends to decrease — and vice versa.
+
+#This is typical in demographic studies: countries with higher birth rates often face limited healthcare resources, higher child mortality, and lower average lifespan.
+```
+
+
+```{r}
+#Step 7:Simple Linear Regression:This will help quantify the relationship between fertility rate and life expectancy:
+
+# Fit linear model
+model <- lm(Life.expectancy ~ FertilityRate, data = life_fertility_clean2)
+
+# View model summary
+summary(model)
+
+#Regression Analysis Summary
+#Model:Life.expectancy = 84.49 - 4.96 × FertilityRate
+
+#Key Findings:
+#Intercept (84.49):When the fertility rate is zero, the predicted life expectancy would be about 84.49 years. This is a theoretical point and helps anchor the model.
+
+#Fertility Rate Coefficient (-4.96):For each additional child per woman, life expectancy decreases by approximately 4.96 years, on average.
+#➤ This strong negative coefficient confirms an inverse relationship.
+
+#R-squared = 0.6615 (66.15%)
+#This means that 66.15% of the variation in life expectancy across countries and years is explained by fertility rate alone, which is quite high for a single predictor.
+
+#p-value < 2e-16:This indicates the relationship is highly statistically significant — there's strong evidence of a real effect between fertility rate and life expectancy.
+
+#Conclusion:There is a strong, statistically significant negative relationship between fertility rate and life expectancy. Countries with higher fertility rates tend to have lower life expectancies. The regression model confirms that fertility rate is a strong predictor of life expectancy.
+
+```
+
+```{r}
+#3) 
+#Step 1: Drop the Population variable
+life_model_data <- life_fertility_clean2 %>%
+  select(-Population)
+```
+
+```{r}
+#Step 2: Remove rows with missing values
+life_model_data <- na.omit(life_model_data)
+```
+
+```{r}
+#Step 3: Build the multiple linear regression model
+model <- lm(Life.expectancy ~ ., data = life_model_data)
+summary(model)
+```
+
+```{r}
+#Step 4: Evaluate model performance using RMSE
+# Predict values
+predicted <- predict(model)
+
+# Calculate RMSE
+actual <- life_model_data$Life.expectancy
+rmse <- sqrt(mean((predicted - actual)^2))
+rmse
+```
+
+
+```{r}
+####4.5 Comparing life expectancy by continent:
+#Set working directory
+setwd("E:/Midterm project/Life Expectancy (WHO)")
+
+#Load the dataset
+who_life_data <- read.csv("Life Expectancy Data.csv")
+
+#View structure
+head(who_life_data)
+str(who_life_data)
+
+# Load required libraries
+library(dplyr)
+library(ggplot2)
+library(Metrics)
+
+#Step 1: Drop non-numeric and Population variables
+life_model_data <- who_life_data %>%
+  select(-Country, -Year, -Status, -Population) %>%
+  na.omit()  # Remove rows with missing values
+
+#Step 2: Fit a Linear Regression Model
+model <- lm(Life.expectancy ~ ., data = life_model_data)
+
+# View summary of the model
+summary(model)
+```
+
+```{r}
+#Step 3: Evaluate Model
+predicted <- predict(model, life_model_data)
+actual <- life_model_data$Life.expectancy
+
+r_squared <- summary(model)$r.squared
+rmse_val <- rmse(actual, predicted)
+
+cat("R-squared:", r_squared, "\n")
+cat("RMSE:", rmse_val, "\n")
+```
+
+```{r}
+#Step 4: Residual Plot
+residuals <- residuals(model)
+ggplot(data = NULL, aes(x = predicted, y = residuals)) +
+  geom_point(alpha = 0.5, color = "darkred") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue") +
+  labs(title = "Residual Plot",
+       x = "Predicted Life Expectancy",
+       y = "Residuals") +
+  theme_minimal()
+```
+
+```{r}
+#Step 5: Predicted vs Actual Plot
+comparison_df <- data.frame(Actual = actual, Predicted = predicted)
+ggplot(comparison_df, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = "darkgreen") +
+  geom_abline(intercept = 0, slope = 1, color = "blue", linetype = "dashed") +
+  labs(title = "Predicted vs Actual Life Expectancy",
+       x = "Actual Life Expectancy", y = "Predicted Life Expectancy") +
+  theme_minimal()
+```
+
+```{r}
+#Step 6: Interpretation and Model Improvement Suggestion
+cat("Interpretation:\n")
+cat("The R-squared value (0.8218052) indicates that approximately 82.18% of the variance\n")
+cat("in life expectancy is explained by the independent variables in the model.\n")
+cat("This suggests a strong fit, though there is still room for improvement.\n\n")
+
+cat("The RMSE (Root Mean Squared Error) is 3.63, meaning the model's predictions\n")
+cat("are off by about 3.63 years on average. Lower RMSE is better.\n\n")
+
+cat("To improve model performance, we sould:\n")
+cat("- Use feature selection (e.g: stepwise regression) to eliminate less informative variables\n")
+cat("- Apply polynomial or interaction terms to capture non-linear relationships\n")
+cat("- Try advanced models such as Random Forests, Gradient Boosting, or LASSO Regression\n\n")
+
+# Optionally reprint the exact values
+cat("Model Evaluation Metrics:\n")
+cat("R-squared:", round(r_squared, 6), "\n")
+cat("RMSE:", round(rmse_val, 6), "\n")
+
+```
+
+```{r}
+#Step 7: Filter data for 2015
+life_2015 <- who_life_data %>%
+  filter(Year == 2015)
+
+#Step 8: Add continent information
+library(countrycode)
+
+life_2015$Continent <- countrycode(sourcevar = life_2015$Country,
+                                   origin = "country.name",
+                                   destination = "continent")
+```
+
+```{r}
+#Step 9: Calculate average life expectancy per continent
+avg_life_by_continent <- life_2015 %>%
+  group_by(Continent) %>%
+  summarise(Avg_Life_Expectancy = mean(Life.expectancy, na.rm = TRUE)) %>%
+  arrange(desc(Avg_Life_Expectancy))
+
+print(avg_life_by_continent)
+```
+
+```{r}
+#Step 10: Plot life expectancy by continent
+ggplot(avg_life_by_continent, aes(x = reorder(Continent, Avg_Life_Expectancy),
+                                  y = Avg_Life_Expectancy, fill = Continent)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Average Life Expectancy by Continent (2015)",
+       x = "Continent", y = "Average Life Expectancy") +
+  theme_minimal()
+
+```
+
+```{r}
+#Step 11:Automatically extract answers from avg_life_by_continent
+highest <- avg_life_by_continent$Continent[1]
+highest_value <- avg_life_by_continent$Avg_Life_Expectancy[1]
+
+lowest <- avg_life_by_continent$Continent[nrow(avg_life_by_continent)]
+lowest_value <- avg_life_by_continent$Avg_Life_Expectancy[nrow(avg_life_by_continent)]
+
+cat("1. The continent with the highest average life expectancy is:", highest,
+    "with an average of", round(highest_value, 1), "years.\n")
+
+cat("2. The continent with the lowest average life expectancy is:", lowest,
+    "with an average of", round(lowest_value, 1), "years.\n")
+```
+
+```{r}
+####4.5 Summary: Comparing Life Expectancy by Continent(2015)
+#Interpretation:
+#European countries generally have better healthcare systems, higher living standards,and greater public health investments which reflects in their high life expectancy.
+#African countries, on the other hand, face challenges such as limited access to healthcare, malnutrition, and high infant mortality, contributing to lower life expectancy.
+```
+
+
+
+
+```{r}
+####4.6 Comparing life expectancy in EAC and SADC
+#Step 1: Filter WHO life expectancy data for 2013
+life_2013 <- who_life_data %>%
+  filter(Year == 2013)
+
+#Step 2: Define EAC and SADC Member Countries
+#East African Community (EAC) countries
+eac_countries <- c("Burundi", "Kenya", "Rwanda", "South Sudan", "Tanzania", "Uganda","Somalia","Democratic Republic of the Congo")
+
+#Southern African Development Community (SADC) countries
+sadc_countries <- c("Angola", "Botswana", "Comoros", "Democratic Republic of the Congo", 
+                    "Eswatini", "Lesotho", "Madagascar", "Malawi", "Mauritius", 
+                    "Mozambique", "Namibia", "Seychelles", "South Africa", 
+                    "Tanzania", "Zambia", "Zimbabwe")
+
+#Step 3: Filter the data for each group
+# Filter for EAC
+eac_life <- life_2013 %>%
+  filter(Country %in% eac_countries)
+
+# Filter for SADC
+sadc_life <- life_2013 %>%
+  filter(Country %in% sadc_countries)
+
+#Step 4: Calculate and Compare the Averages
+# Average life expectancy for EAC
+eac_avg <- mean(eac_life$Life.expectancy, na.rm = TRUE)
+
+# Average life expectancy for SADC
+sadc_avg <- mean(sadc_life$Life.expectancy, na.rm = TRUE)
+
+#Step 5: Print Interpretation
+cat("EAC Average Life Expectancy (2013):", round(eac_avg, 2), "years\n")
+cat("SADC Average Life Expectancy (2013):", round(sadc_avg, 2), "years\n")
+
+# Comparison
+if (eac_avg > sadc_avg) {
+  cat("Conclusion: EAC had a higher average life expectancy than SADC in 2013.\n")
+} else if (sadc_avg > eac_avg) {
+  cat("Conclusion: SADC had a higher average life expectancy than EAC in 2013.\n")
+} else {
+  cat("Conclusion: EAC and SADC had equal average life expectancy in 2013.\n")
+}
+
+```
+
